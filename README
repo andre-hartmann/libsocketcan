@@ -7,6 +7,8 @@ Dependencies:
 -------------------------------------------------------------------------------
 A recent kernel with integrated SocketCAN (at least 2.6.30)
 
+To use the CAN FD data bitrate functions, at least Kernel 3.15 is needed.
+
 Building:
 -------------------------------------------------------------------------------
 Please refer to the INSTALL file
