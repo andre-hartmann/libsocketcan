@@ -54,6 +54,8 @@
 #define GET_BITTIMING_CONST 6
 #define GET_BERR_COUNTER 7
 #define GET_XSTATS 8
+#define GET_DATA_BITTIMING 9
+#define GET_DATA_BITTIMING_CONST 10
 
 struct get_req {
 	struct nlmsghdr n;
@@ -72,6 +74,7 @@ struct req_info {
 	__u32 restart_ms;
 	struct can_ctrlmode *ctrlmode;
 	struct can_bittiming *bittiming;
+	struct can_bittiming *databittiming;
 };
 
 static void
@@ -481,6 +484,26 @@ static int do_get_nl_link(int fd, __u8 acquire, const char *name, void *res)
 					fprintf(stderr, "no berr_counter data found\n");
 
 				break;
+			case GET_DATA_BITTIMING:
+				if (can_attr[IFLA_CAN_DATA_BITTIMING]) {
+					memcpy(res,
+						   RTA_DATA(can_attr[IFLA_CAN_DATA_BITTIMING]),
+						   sizeof(struct can_bittiming));
+					ret = 0;
+				} else
+					fprintf(stderr, "no bittiming_const data found\n");
+
+				break;
+			case GET_DATA_BITTIMING_CONST:
+				if (can_attr[IFLA_CAN_DATA_BITTIMING_CONST]) {
+					memcpy(res,
+						   RTA_DATA(can_attr[IFLA_CAN_DATA_BITTIMING_CONST]),
+						   sizeof(struct can_bittiming_const));
+					ret = 0;
+				} else
+					fprintf(stderr, "no data_bittiming_const data found\n");
+
+				break;
 
 			default:
 				fprintf(stderr, "unknown acquire mode\n");
@@ -598,6 +621,12 @@ static int do_set_nl_link(int fd, __u8 if_state, const char *name,
 		if (req_info->bittiming != NULL) {
 			addattr_l(&req.n, 1024, IFLA_CAN_BITTIMING,
 				  req_info->bittiming,
+				  sizeof(struct can_bittiming));
+		}
+
+		if (req_info->databittiming != NULL) {
+			addattr_l(&req.n, 1024, IFLA_CAN_DATA_BITTIMING,
+				  req_info->databittiming,
 				  sizeof(struct can_bittiming));
 		}
 
@@ -774,18 +803,16 @@ int can_set_restart_ms(const char *name, __u32 restart_ms)
  *
  * @param cm pointer of a can_ctrlmode struct
  *
- * This sets the control mode of the can device. There are currently the
- * following modes available (each mapped to its own macro):
- *
- * @code
- * #define CAN_CTRLMODE_LOOPBACK           0x01    // Loopback mode
- * #define CAN_CTRLMODE_LISTENONLY         0x02    // Listen-only mode
- * #define CAN_CTRLMODE_3_SAMPLES          0x04    // Triple sampling mode
- * #define CAN_CTRLMODE_ONE_SHOT           0x08    // One-Shot mode
- * #define CAN_CTRLMODE_BERR_REPORTING     0x10    // Bus-error reporting
- * #define CAN_CTRLMODE_FD                 0x20    // CAN FD mode
- * #define CAN_CTRLMODE_PRESUME_ACK        0x40    // Ignore missing CAN ACKs
- * @endcode
+ * This sets the control mode of the can device. There are currently eight
+ * different control modes:
+ * - LOOPBACK
+ * - LISTEN_ONLY
+ * - TRIPPLE_SAMPLING
+ * - ONE_SHOT
+ * - ERROR_REPORTING
+ * - FD
+ * - PRESUME_ACK
+ * - FD_NON_ISO
  *
  * You have to define the control mode struct yourself. A can_ctrlmode struct
  * is declared as:
@@ -798,8 +825,21 @@ int can_set_restart_ms(const char *name, __u32 restart_ms)
  * @endcode
  *
  * You can use mask to select modes you want to control and flags to determine
- * if you want to turn the selected mode(s) on or off. E. g. the following
- * pseudocode will turn the loopback mode on and listenonly mode off:
+ * if you want to turn the selected mode(s) on or off. Every control mode is
+ * mapped to an own macro:
+ *
+ * @code
+ * #define CAN_CTRLMODE_LOOPBACK        0x01
+ * #define CAN_CTRLMODE_LISTENONLY      0x02
+ * #define CAN_CTRLMODE_3_SAMPLES       0x04
+ * #define CAN_CTRLMODE_ONE_SHOT        0x08
+ * #define CAN_CTRLMODE_BERR_REPORTING  0x10
+ * #define CAN_CTRLMODE_FD              0x20
+ * #define CAN_CTRLMODE_PRESUME_ACK     0x40
+ * #define CAN_CTRLMODE_FD_NON_ISO      0x80
+ * @endcode
+ *
+ * e.g. the following pseudocode
  *
  * @code
  * struct can_ctrlmode cm;
@@ -808,6 +848,8 @@ int can_set_restart_ms(const char *name, __u32 restart_ms)
  * cm.flags = CAN_CTRLMODE_LOOPBACK;
  * can_set_ctrlmode(candev, &cm);
  * @endcode
+ *
+ * will turn the loopback mode on and listenonly mode off.
  *
  * @return 0 if success
  * @return -1 if failed
@@ -925,6 +967,106 @@ int can_set_bitrate_samplepoint(const char *name, __u32 bitrate,
 	bt.sample_point = sample_point;
 
 	return can_set_bittiming(name, &bt);
+}
+
+/**
+ * @ingroup extern
+ * can_set_data_bittiming - setup the data bittiming.
+ *
+ * @param name name of the can device. This is the netdev name, as ifconfig -a shows
+ * in your system. usually it contains prefix "can" and the numer of the can
+ * line. e.g. "can0"
+ * @param bt pointer to a can_bittiming struct
+ *
+ * This sets the data bittiming of the can device. This is for advantage usage.
+ *
+ * Please see can_set_bittiming for more information about bit timing.
+ *
+ * @return 0 if success
+ * @return -1 if failed
+ */
+int can_set_data_bittiming(const char *name, struct can_bittiming *databt)
+{
+	int result;
+	struct can_ctrlmode cm;
+	struct can_bittiming bitTiming;
+
+	memset(&cm, 0, sizeof(cm));
+
+	// Need to enable can FD to be able to set data bit timing
+	cm.mask  = CAN_CTRLMODE_FD;
+	cm.flags = CAN_CTRLMODE_FD;
+
+	result = can_get_bittiming(name,&bitTiming);
+	if (result == -1)
+		return result;
+
+	// Kernel wants to recalc, remove bitrate to avoid EINVAL in can_get_bittiming
+	bitTiming.bitrate = 0;
+
+	struct req_info req_info = {
+		.bittiming     = &bitTiming,
+		.databittiming = databt,
+		.ctrlmode      = &cm
+	};
+
+	return set_link(name, 0, &req_info);
+}
+
+/**
+ * @ingroup extern
+ * can_set_data_bitrate - setup the data bitrate.
+ *
+ * @param name name of the can device. This is the netdev name, as ifconfig -a shows
+ * in your system. usually it contains prefix "can" and the numer of the can
+ * line. e.g. "can0"
+ * @param bitrate data bitrate of the can bus
+ *
+ * This is the recommended way to setup the bus bit timing. You only have to
+ * give a bitrate value here. The exact bit timing will be calculated
+ * automatically. To use this function, make sure that CONFIG_CAN_CALC_BITTIMING
+ * is set to y in your kernel configuration.
+ *
+ * @return 0 if success
+ * @return -1 if failed
+ */
+int can_set_data_bitrate(const char *name, __u32 bitrate)
+{
+	struct can_bittiming bt;
+
+	memset(&bt, 0, sizeof(bt));
+	bt.bitrate = bitrate;
+
+	return can_set_data_bittiming(name, &bt);
+}
+
+/**
+ * @ingroup extern
+ * can_set_data_bitrate_samplepoint - setup the data bitrate.
+ *
+ * @param name name of the can device. This is the netdev name, as ifconfig -a shows
+ * in your system. usually it contains prefix "can" and the numer of the can
+ * line. e.g. "can0"
+ * @param bitrate data bitrate of the can bus
+ * @param sample_point sample point value
+ *
+ * This one is similar to can_set_date_bitrate, only you can additionally set up the
+ * time point for sampling (sample point) customly instead of using the
+ * CIA recommended value. sample_point can be a value between 0 and 999.
+ *
+ * @return 0 if success
+ * @return -1 if failed
+ */
+int can_set_data_bitrate_samplepoint(const char *name, __u32 bitrate,
+				__u32 sample_point)
+{
+	struct can_bittiming bt;
+
+	memset(&bt, 0, sizeof(bt));
+	bt.bitrate = bitrate;
+	bt.sample_point = sample_point;
+
+	return can_set_data_bittiming(name, &bt);
 }
 
 /**
@@ -1110,6 +1252,64 @@ int can_get_bittiming_const(const char *name, struct can_bittiming_const *btc)
 int can_get_berr_counter(const char *name, struct can_berr_counter *bc)
 {
 	return get_link(name, GET_BERR_COUNTER, bc);
+}
+
+/**
+ * @ingroup extern
+ * can_get_data_bittiming - get the current data bit timing configuration.
+ *
+ * @param name name of the can device. This is the netdev name, as ifconfig -a shows
+ * in your system. usually it contains prefix "can" and the numer of the can
+ * line. e.g. "can0"
+ * @param bt pointer to the bittiming struct.
+ *
+ * This one stores the current data bittiming configuration.
+ *
+ * Please see can_set_bittiming for more information about bit timing.
+ *
+ * @return 0 if success
+ * @return -1 if failed
+ */
+int can_get_data_bittiming(const char *name, struct can_bittiming *bt)
+{
+	return get_link(name, GET_DATA_BITTIMING, bt);
+}
+
+/**
+ * @ingroup extern
+ * can_get_data_bittiming_const - get the current data bit timing constant.
+ *
+ * @param name name of the can device. This is the netdev name, as ifconfig -a shows
+ * in your system. usually it contains prefix "can" and the numer of the can
+ * line. e.g. "can0"
+ * @param btc pointer to the bittiming constant struct.
+ *
+ * This one stores the hardware dependent data bittiming constant. The
+ * can_bittiming_const struct consists:
+ *
+ * @code
+ * struct can_bittiming_const {
+ *	char name[16];
+ *	__u32 tseg1_min;
+ *	__u32 tseg1_max;
+ *	__u32 tseg2_min;
+ *	__u32 tseg2_max;
+ *	__u32 sjw_max;
+ *	__u32 brp_min;
+ *	__u32 brp_max;
+ *	__u32 brp_inc;
+ *	};
+ * @endcode
+ *
+ * The information in this struct is used to calculate the bus bit timing
+ * automatically.
+ *
+ * @return 0 if success
+ * @return -1 if failed
+ */
+int can_get_data_bittiming_const(const char *name, struct can_bittiming_const *btc)
+{
+	return get_link(name, GET_DATA_BITTIMING_CONST, btc);
 }
 
 /**
