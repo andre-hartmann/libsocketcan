@@ -3,16 +3,17 @@
 
 CONFIG -= qt
 
-TARGET = libsocketcan
+TARGET = libsocketcan-test
 
-TEMPLATE = lib
+TEMPLATE = app
 
 HEADERS = \
    $$PWD/include/can_netlink.h \
    $$PWD/include/libsocketcan.h
 
 SOURCES = \
-   $$PWD/src/libsocketcan.c
+   $$PWD/src/libsocketcan.c \
+   $$PWD/main.c
 
 INCLUDEPATH = \
     $$PWD/include
