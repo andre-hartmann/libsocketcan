@@ -78,18 +78,21 @@ void setBitrate(const char *name, int bitrate, int dataBitrate)
 {
 	printf("setBitrate(name = %s, bitrate = %d, dataBitrate = %d\n", name, bitrate, dataBitrate);
 	
-	int result = can_set_bitrate(name, (__u32)bitrate);
+	int result = can_do_stop(name);
+	printf("can_do_stop(name = %s) = %d\n", name, result);
+	
+	result = can_set_bitrate(name, (__u32)bitrate);
 	printf("can_set_bitrate(name = %s, bitrate = %d) = %d\n", name, bitrate, result);
 	can_set_data_bitrate(name, (__u32)dataBitrate);
 	printf("can_set_data_bitrate(name = %s, dataBitrate = %d) = %d\n", name, dataBitrate, result);
+
+	result = can_do_start(name);
+	printf("can_do_start(name = %s) = %d\n", name, result);
 }
 
 int main(int argc, char *argv[])
 {
-	printInfo("can0");
-	printInfo("can1");
-	
-	setBitrate("can0", 500000, 4000000);
+	setBitrate("can0", 250000, 2000000);
 	printInfo("can0");
 	return 0;
 }
