@@ -169,7 +169,11 @@ static int addattr_l(struct nlmsghdr *n, size_t maxlen, int type,
 static int send_mod_request(int fd, struct nlmsghdr *n)
 {
 	int status;
-	struct sockaddr_nl nladdr;
+	struct sockaddr_nl nladdr = {
+		.nl_family = AF_NETLINK,
+		.nl_pid = 0,
+		.nl_groups = 0,
+	};
 	struct nlmsghdr *h;
 
 	struct iovec iov = {
@@ -183,12 +187,6 @@ static int send_mod_request(int fd, struct nlmsghdr *n)
 		.msg_iovlen = 1,
 	};
 	char buf[16384];
-
-	memset(&nladdr, 0, sizeof(nladdr));
-
-	nladdr.nl_family = AF_NETLINK;
-	nladdr.nl_pid = 0;
-	nladdr.nl_groups = 0;
 
 	n->nlmsg_seq = 0;
 	n->nlmsg_flags |= NLM_F_ACK;
@@ -297,7 +295,10 @@ static int open_nl_sock()
 	int sndbuf = 32768;
 	int rcvbuf = 32768;
 	unsigned int addr_len;
-	struct sockaddr_nl local;
+	struct sockaddr_nl local = {
+		.nl_family = AF_NETLINK,
+		.nl_groups = 0,
+	};
 
 	fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if (fd < 0) {
@@ -308,10 +309,6 @@ static int open_nl_sock()
 	setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (void *)&sndbuf, sizeof(sndbuf));
 
 	setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (void *)&rcvbuf, sizeof(rcvbuf));
-
-	memset(&local, 0, sizeof(local));
-	local.nl_family = AF_NETLINK;
-	local.nl_groups = 0;
 
 	if (bind(fd, (struct sockaddr *)&local, sizeof(local)) < 0) {
 		perror("Cannot bind netlink socket");
@@ -982,10 +979,9 @@ int can_set_bittiming(const char *name, struct can_bittiming *bt)
 
 int can_set_bitrate(const char *name, __u32 bitrate)
 {
-	struct can_bittiming bt;
-
-	memset(&bt, 0, sizeof(bt));
-	bt.bitrate = bitrate;
+	struct can_bittiming bt = {
+		.bitrate = bitrate
+	};
 
 	return can_set_bittiming(name, &bt);
 }
@@ -1010,11 +1006,10 @@ int can_set_bitrate(const char *name, __u32 bitrate)
 int can_set_bitrate_samplepoint(const char *name, __u32 bitrate,
 				__u32 sample_point)
 {
-	struct can_bittiming bt;
-
-	memset(&bt, 0, sizeof(bt));
-	bt.bitrate = bitrate;
-	bt.sample_point = sample_point;
+	struct can_bittiming bt = {
+		.bitrate = bitrate,
+		.sample_point = sample_point
+	};
 
 	return can_set_bittiming(name, &bt);
 }
