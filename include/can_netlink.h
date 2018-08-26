@@ -39,7 +39,7 @@ struct can_bittiming {
 };
 
 /*
- * CAN harware-dependent bit-timing constant
+ * CAN hardware-dependent bit-timing constant
  *
  * Used for calculating and checking bit-timing parameters
  */
