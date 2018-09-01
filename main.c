@@ -1,5 +1,7 @@
 #include "libsocketcan.h"
 
+#include <assert.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -91,10 +93,83 @@ void setBitrate(const char *name, int bitrate, int dataBitrate)
 	printf("can_do_start(name = %s) = %d\n", name, result);
 }
 
+static void verifySetBitrate(const char *name, __u32 bitrate)
+{
+	assert(can_set_bitrate(name, bitrate) == 0);
+	struct can_bittiming bt;
+	assert(can_get_bittiming(name, &bt) == 0);
+	assert(bt.bitrate == bitrate);
+}
+
+static void verifySetDataBitrate(const char *name, __u32 dbitrate)
+{
+	assert(can_set_data_bitrate(name, dbitrate) == 0);
+	struct can_bittiming bt;
+	assert(can_get_data_bittiming(name, &bt) == 0);
+	assert(bt.bitrate == dbitrate);
+}
+
+static void verifySetCanFdEnabled(const char *name, int enabled)
+{
+	struct can_ctrlmode cm = {
+		.mask = CAN_CTRLMODE_FD,
+		.flags = enabled ? CAN_CTRLMODE_FD : 0
+	};
+	assert(can_set_ctrlmode(name, &cm) == 0);
+}
+
+static void verifyIsCanFdEnabled(const char *name, int enabled)
+{
+	struct can_ctrlmode cm;
+	assert(can_get_ctrlmode(name, &cm) == 0);
+	int fd = (cm.flags & CAN_CTRLMODE_FD) ? 1 : 0;
+	assert(fd == enabled);
+}
+
+static void verifyBitrate(const char *name, __u32 dbitrate)
+{
+	struct can_bittiming bt;
+	assert(can_get_bittiming(name, &bt) == 0);
+	assert(bt.bitrate == dbitrate);
+}
+	
+static void verifyDataBitrate(const char *name, __u32 dbitrate)
+{
+	struct can_bittiming bt;
+	assert(can_get_data_bittiming(name, &bt) == 0);
+	assert(bt.bitrate == dbitrate);
+}
+
+int test(const char *name)
+{
+	assert(can_do_stop(name) == 0);
+
+	verifySetCanFdEnabled(name, 0);
+
+	verifySetBitrate(name, 125000);
+	verifyIsCanFdEnabled(name, 0);
+
+	verifySetDataBitrate(name, 500000);
+	verifyBitrate(name, 125000);
+	verifyIsCanFdEnabled(name, 1);
+
+	verifySetBitrate(name, 250000);
+	verifyIsCanFdEnabled(name, 1);
+	verifyDataBitrate(name, 500000);
+
+	assert(can_do_start(name) == 0);
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int bitrate = 250000;
 	int dataBitrate = 2000000;
+
+	if (argc == 2 && strcmp(argv[1], "--test") == 0) {
+		return test("can0");
+	}
 	
 	if (argc >= 2)
 		bitrate = atoi(argv[1]);
